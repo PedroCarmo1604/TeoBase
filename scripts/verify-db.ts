@@ -40,15 +40,24 @@ async function step(label: string, fn: () => Promise<void>) {
 async function main() {
   console.log(`Conectando a ${url}\n`)
 
-  await step('tabela "temas" existe e é legível', async () => {
+  // A chave anônima roda como role "anon", e as policies de temas/leituras são
+  // "to authenticated" — então mesmo com dados no banco, essas queries voltam
+  // 0 linhas por RLS, não por a tabela estar vazia ou não existir. O único
+  // sinal confiável que dá pra checar aqui sem um usuário autenticado é a
+  // ausência do erro PGRST205 (tabela/coluna não encontrada no schema cache),
+  // que indicaria a migration não aplicada.
+  await step('tabela "temas" existe no schema (contagem real exige sessão autenticada)', async () => {
     const { error } = await supabase.from('temas').select('id').limit(1)
     if (error) throw error
   })
 
-  await step('tabela "leituras_recomendadas" existe e é legível', async () => {
-    const { error } = await supabase.from('leituras_recomendadas').select('id').limit(1)
-    if (error) throw error
-  })
+  await step(
+    'tabela "leituras_recomendadas" existe no schema (contagem real exige sessão autenticada)',
+    async () => {
+      const { error } = await supabase.from('leituras_recomendadas').select('id').limit(1)
+      if (error) throw error
+    }
+  )
 
   await step('acesso anônimo a "discussoes" é bloqueado pela RLS (esperado)', async () => {
     const { data, error } = await supabase.from('discussoes').select('id').limit(1)
@@ -59,7 +68,11 @@ async function main() {
   })
 
   if (!shouldWrite) {
-    console.log('\nChecagens de leitura concluídas. Rode com --write para testar o fluxo completo.')
+    console.log(
+      '\nChecagens de leitura concluídas (confirmam schema + RLS, não o conteúdo real de ' +
+        'temas/leituras — para isso, rode uma contagem no SQL Editor). Rode com --write para ' +
+        'testar o fluxo de escrita.'
+    )
     return
   }
 
